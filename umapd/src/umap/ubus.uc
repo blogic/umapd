@@ -176,6 +176,15 @@ export default {
 		};
 	},
 
+	register_udebug: function (cb) {
+		this.udebug_sub = ubus.subscriber((req) => {
+			if (req.type == "config")
+				cb(req.data);
+		}, null, [ "udebug" ]);
+
+		cb(ubus.call("udebug", "get_config"));
+	},
+
 	publish: function () {
 		if (this.connect())
 			return (namespace ??= ubus.publish("umap", IUmapUbusProcedures));
