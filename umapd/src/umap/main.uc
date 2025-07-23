@@ -33,6 +33,7 @@ import proto_topology from 'umap.proto.topology';
 import proto_autoconf from 'umap.proto.autoconf';
 import proto_capab from 'umap.proto.capabilities';
 import proto_scanning from 'umap.proto.scanning';
+import proto_steering from 'umap.proto.steering';
 
 const relayed_messages = utils.AgingDict(60000);
 
@@ -65,6 +66,7 @@ function handle_i1905_cmdu(i1905lif, dstmac, srcmac, msg) {
 		        || proto_autoconf.handle_cmdu(i1905lif, dstmac, srcmac, msg)
 		        || proto_capab.handle_cmdu(i1905lif, dstmac, srcmac, msg)
 		        || proto_scanning.handle_cmdu(i1905lif, dstmac, srcmac, msg)
+        		|| proto_steering.handle_cmdu(i1905lif, dstmac, srcmac, msg)
 		        ;
 
 		if (!handled)
@@ -250,6 +252,7 @@ export default function () {
 	proto_autoconf.init();
 	proto_capab.init();
 	proto_scanning.init();
+	proto_steering.init();
 
 	if (!ubus.publish())
 		log.warn(`Unable to publish umap object: ${ubus.error()}`);
