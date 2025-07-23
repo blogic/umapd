@@ -1,0 +1,385 @@
+#!/usr/bin/env ucode
+
+'use strict';
+
+import { ulog_open, ulog, ULOG_SYSLOG, ULOG_STDIO, LOG_DAEMON, LOG_INFO } from 'log';
+import * as nl80211 from 'nl80211';
+import * as libubus from 'ubus';
+import * as uloop from 'uloop';
+import { readfile } from 'fs';
+
+ulog_open(ULOG_SYSLOG | ULOG_STDIO, LOG_DAEMON, 'umap-rrmd');
+
+let hostapd = {};
+let stations = {};
+
+uloop.init();
+let ubus = libubus.connect();
+let ubus_obj;
+
+function encodeRSSI(dbm) {
+	let enc = (dbm + 202) / 2;
+
+	if (enc >= 221 && enc <= 224)
+		enc = 225;
+
+	return max(min(enc, 255), 0);
+}
+
+function lookup_ifname(bssid) {
+	for (let k, v in hostapd) {
+		if (v.bssid != bssid)
+			continue;
+		return k;
+	}
+	return null;
+}
+
+function nl80211_cb(msg) {
+	switch(msg.cmd) {
+	case nl80211.const.NL80211_CMD_DEL_STATION:
+		const sta_info = msg.msg.sta_info;
+		ubus_obj.notify('disassoc', {
+			ifname: msg.msg.dev,
+			address: msg.msg.mac,
+			stats: {
+				bytes_sent: sta_info.tx_bytes64,
+				bytes_received: sta_info.rx_bytes64,
+				packets_sent: sta_info.tx_packets,
+				packets_received: sta_info.rx_packets,
+				tx_packets_errors: sta_info.tx_failed,
+				rx_packets_errors: 0,
+				retransmission_count: sta_info.tx_retries,
+			},
+		}, null, null, null, -1);
+		break;
+	}
+}
+
+function nl80211_get_survey(dev) {
+	let res = nl80211.request(nl80211.const.NL80211_CMD_GET_SURVEY, nl80211.const.NLM_F_DUMP, { dev });
+	let ret = {
+		utilization: 0,
+		noise: 0,
+		transmit: 0,
+		receive_self: 0,
+		receive_other: 0,
+	};
+
+	for (let freq in res) {
+		if (!freq.survey_info.in_use)
+			continue;
+		ret = {
+			utilization: (freq.survey_info.busy * 255) / freq.survey_info.time,
+			noise: encodeRSSI(freq.survey_info.noise),
+			transmit: (freq.survey_info.time_tx * 255) / freq.survey_info.time,
+			receive_self: (freq.survey_info.time_rx * 255) / freq.survey_info.time,
+			receive_other: ((freq.survey_info.busy - freq.survey_info.time_tx - freq.survey_info.time_rx) * 255) / freq.survey_info.time,
+		}
+	}
+
+	warn("Unable to lookup survey: " + nl80211.error() + "\n");
+
+	return ret;
+}
+
+function nl80211_get_stations(dev) {
+	let res = nl80211.request(nl80211.const.NL80211_CMD_GET_STATION, nl80211.const.NLM_F_DUMP, { dev });
+	let ret = {};
+
+	for (let k, v in res) {
+		ret[v.mac] = {
+			traffic: {
+				mac_address: v.mac,
+				bytes_sent: v.sta_info.tx_bytes64,
+				bytes_received: v.sta_info.rx_bytes64,
+				packets_sent: v.sta_info.tx_packets,
+				packets_received: v.sta_info.rx_packets,
+				tx_packets_errors: v.sta_info.tx_failed,
+				rx_packets_errors: 0,
+				retransmission_count: v.sta_info.tx_retries,
+			},
+			link: {
+				mac_address: v.mac,
+				bssids: [ {
+						bssid: hostapd[dev].bssid,
+			// TODO
+						estimated_downlink_mac_data_rate: 0,
+						estimated_uplink_mac_data_rate: v.sta_info.expected_throughput / 100,
+			// TODO
+						time_delta: 100,
+						uplink_rcpi: encodeRSSI(v.sta_info.signal_avg),
+					}
+				]
+			},
+			link_ext: {
+				mac_address: v.mac,
+				bssids: [ {
+						bssid: hostapd[dev].bssid,
+						last_data_downlink_rate: v.sta_info.rx_bitrate.bitrate32,
+						last_data_uplink_rate: v.sta_info.tx_bitrate.bitrate32,
+						utilization_receive: v.sta_info.rx_duration / 1000,
+						utilization_transmit: v.sta_info.tx_duration / 1000,
+					}
+				]
+			},
+			//TODO: add WIFI-6 STA Status
+			//TODO: add WIFI-7 afffiliated metric
+
+		};
+	}
+
+	return ret;
+}
+
+function nl80211_get_station_metric(dev, mac) {
+	let res = nl80211.request(nl80211.const.NL80211_CMD_GET_STATION, 0, { dev, mac });
+	if (!res)
+		return {};
+
+	let bssid = hostapd[dev]?.bssid;
+	if (!bssid)
+		return {};
+
+	return {
+		link: {
+			mac_address: mac,
+			bssids: [ {
+					bssid,
+					//TODO
+					estimated_downlink_mac_data_rate: 0,
+					estimated_uplink_mac_data_rate: res.sta_info.expected_throughput / 100,
+					time_delta: res.sta_info.connected_time,
+					uplink_rcpi: encodeRSSI(res.sta_info.signal_avg),
+				}
+			]
+		},
+		link_ext: {
+			mac_address: mac,
+			bssids: [ {
+					bssid,
+					last_data_downlink_rate: res.sta_info.rx_bitrate.bitrate32,
+					last_data_uplink_rate: res.sta_info.tx_bitrate.bitrate32,
+					utilization_receive: res.sta_info.rx_duration / 1000,
+					utilization_transmit: res.sta_info.tx_duration / 1000,
+				}
+			]
+		},
+	}
+}
+
+nl80211.listener(nl80211_cb, [ nl80211.const.NL80211_CMD_DEL_STATION ]);
+
+function hostapd_rrm_beacon_req(dev, req) {
+	let status = ubus.call(`hostapd.${dev}`, 'get_status');
+	let msg = {
+		addr: req.args.mac_address,
+		channel: req.args.channel || status.channel,
+		mode: 1,
+		op_class: req.opclass || status.op_class,
+		duration: 150,
+	};
+
+	if (req.bssid)
+		msg.bssid = req.bssid;
+
+	if (req.ssid)
+		msg.ssid = req.ssid;
+
+	if (exists(req, 'reporting_detail_value'))
+		msg.reporting_detail = req.reporting_detail_value;
+
+	ubus.call(`hostapd.${dev}`, 'rrm_beacon_req', msg);
+}
+
+function handle_assoc(data) {
+	let ies = ubus.call('hostapd.' + data.ifname, 'get_sta_ies', { address: data.address });
+	stations[lc(data.address)] = {
+		ifname: data.ifname,
+		bssid: lc(data.target),
+		assoc_frame: ies.assoc_frame,
+	};
+	ubus_obj.notify('assoc', {
+		ifname: data.ifname,
+		address: lc(data.address),
+	}, null, null, null, -1);
+	return 0;
+}
+
+function handle_disassoc(data) {
+	delete stations[lc(data.address)];
+}
+
+function handle_beacon_report(data) {
+//	printf('%.J\n', data);
+}
+
+function handle_probe(data) {
+//	printf('%.J\n', data);
+}
+
+let notify_handler = {
+	assoc: handle_assoc,
+	disassoc: handle_disassoc,
+	'beacon-report': handle_beacon_report,
+	probe: handle_probe,
+};
+
+function hapd_subscriber_notify_cb(notify) {
+	let handler = notify_handler[notify.type];
+	if (!handler) {
+		if (notify.type != 'probe')
+			printf('%s\n', notify.type);
+		return 0;
+	}
+	
+	return handler(notify.data);
+}
+
+function hapd_subscriber_remove_cb(remove, obj) {
+        printf('remove: %.J\n', remove);
+}
+
+let hapd_subscriber = ubus.subscriber(hapd_subscriber_notify_cb, hapd_subscriber_remove_cb);
+
+function hostapd_add(path, obj) {
+	printf('adding %s\n', path);
+	let ifname = obj[1];
+	hapd_subscriber.subscribe(path);
+	ubus.call(path, 'bss_mgmt_enable', { 'neighbor_report': true, 'beacon_report': true, 'bss_transition': true });
+	let status = ubus.call(path, 'get_status');
+	hostapd[ifname] = {
+		bssid: lc(status.bssid),
+		ssid: status.ssid,
+	};
+}
+
+function hostapd_remove(path, obj) {
+	printf('removing %s\n', path);
+	let ifname = obj[1];
+	delete hostapd[ifname];
+}
+
+function unsub_object(add, id, path) {
+	let object = split(path, '.');
+	if (object[0] == 'hostapd' && object[1]) {
+		if (add)
+			hostapd_add(path, object);
+		else
+			hostapd_remove(path, object);
+	}
+}
+
+function ubus_listener(event, payload) {
+	unsub_object(event == 'ubus.object.add', payload.id, payload.path);
+}
+
+ubus.listener('ubus.object.add', ubus_listener);
+ubus.listener('ubus.object.remove', ubus_listener);
+
+let list = ubus.list();
+for (let k, path in list)
+	unsub_object(true, 0, path);
+
+let ubus_methods = {
+	client_capability: {
+		call: function(req) {
+			if (!req.args.bssid || !req.args.macaddr)
+				return stations;
+
+			for (let k, v in stations)
+				if (k == lc(req.args.macaddr) && v.bssid == lc(req.args.bssid))
+					return v;
+			return {};
+		},
+		args: { 
+			bssid: '00:00:00:00:00:00',
+			macaddr: '00:00:00:00:00:00',
+		},
+	},
+
+	ap_metric: {
+		call: function(req) {
+			let ret = {};
+			for (let bssid in req.args.bssids) {
+				bssid = lc(bssid);
+				let ifname = lookup_ifname(bssid);
+				ret[bssid] = {
+					survey: nl80211_get_survey(ifname),
+					stations: nl80211_get_stations(ifname),
+				};
+			}
+			return ret;
+		},
+		args: {
+			bssids: ['00:00:00:00:00:00'],
+		},
+	},
+
+	sta_metric: {
+		call: function(req) {
+			if (!req.args.mac_address)
+				return libubus.STATUS_NOT_FOUND;
+			req.args.mac_address = lc(req.args.mac_address);
+
+			let ifname = stations[req.args.mac_address]?.ifname;
+			if (!ifname)
+				return libubus.STATUS_NOT_FOUND;
+			return nl80211_get_station_metric(ifname, req.args.mac_address);;
+		},
+		args: {
+			mac_address: '00:00:00:00:00:00',
+		}
+	},
+
+	beacon_req: {
+		call: function(req) {
+			if (!req.args.mac_address)
+				return libubus.STATUS_NOT_FOUND;
+			req.args.mac_address = lc(req.args.mac_address);
+
+			let ifname = stations[req.args.mac_address]?.ifname;
+			if (!ifname)
+				return libubus.STATUS_NOT_FOUND;
+
+			hostapd_rrm_beacon_req(ifname, req);
+			return libubus.STATUS_OK;
+		},
+		args: {
+			mac_address: '00:00:00:00:00:00',
+			opclass: 1,
+			channel: 1,
+			bssid: '00:00:00:00:00:00',
+			reporting_detail_value: 1,
+			ssid: 'ssid',
+			ap_channel_reports: [],
+			element_list: [],
+		}
+	},
+
+	btm_transition: {
+		call: function(req) {
+			for (let addr in req.args.addr_list) {
+				if (stations[addr]?.bssid != bssid)
+					continue;
+				let msg = { addr };
+				for (let arg in [ 'disassociation_imminent', 'disassociation_timer', 'validity_period', 'abridged', 'neighbors' ])
+					if (req.args[arg])
+						msg[arg] = req.args[arg];	
+				ubus.call('hostapd.' + stations[addr].ifname, 'bss_transition_request', msg);
+			}
+		},
+		args: {
+			bssid: '00:00:00:00:00:00',
+			disassociation_imminent: true,
+			disassociation_timer: 10,
+			abridged: true,
+			validity_period: 10,
+			addr_list: [],
+			neighbors: [],
+		},
+	}
+};
+ubus_obj = ubus.publish('umap-rrmd', ubus_methods);
+
+uloop.run();
