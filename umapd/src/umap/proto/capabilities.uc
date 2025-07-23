@@ -21,6 +21,7 @@ import defs from 'umap.defs';
 import ubus from 'umap.ubus';
 import utils from 'umap.utils';
 import wireless from 'umap.wireless';
+import ubusclient from 'umap.ubusclient';
 
 
 const REPLY_HANDLER_TIMEOUT = 3000;
@@ -34,6 +35,10 @@ const IProtoCapabilities = {
 		ubus.register('query_backhaul_sta_capability',
 			{ macaddress: "00:00:00:00:00:00" },
 			this.query_backhaul_sta_capability);
+
+		ubus.register('query_client_capability',
+			{ bssid: "00:00:00:00:00:00", macaddress: "00:00:00:00:00:00" },
+			this.query_client_capability);
 	},
 
 	query_ap_capability: function (req) {
@@ -114,6 +119,41 @@ const IProtoCapabilities = {
 		}, REPLY_HANDLER_TIMEOUT);
 
 		model.sendMulticast(query, i1905dev.al_address);
+
+		return req.defer();
+	},
+
+	query_client_capability: function (req) {
+		const i1905dev = model.lookupDevice(req.args.bssid);
+
+		if (!i1905dev || !req.args.macaddress)
+			return req.reply(null, defs.UBUS_STATUS_NOT_FOUND);
+
+		const query = cmdu.create(defs.MSG_CLIENT_CAPABILITY_QUERY);
+		query.add_tlv(defs.TLV_CLIENT_INFO, { bssid: req.args.bssid, mac_address: req.args.macaddress });
+
+		query.on_reply(response => {
+			if (!response)
+				return req.reply(null, defs.UBUS_STATUS_TIMEOUT);
+
+			const client_capability = response.get_tlv(defs.TLV_CLIENT_CAPABILITY_REPORT);
+			if (!client_capability)
+				return req.reply(null, defs.UBUS_STATUS_NOT_FOUND);
+
+			const ret = {
+				result_code: client_capability.result_code,
+				result_code_name: client_capability.result_code_name,
+			};
+
+			// TODO base64 conversion
+			if (!client_capability.result_code)
+				ret.frame_body = client_capability.frame_body;
+
+			return req.reply(ret);
+		}, REPLY_HANDLER_TIMEOUT);
+
+		for (let i1905lif in model.getLocalInterfaces())
+			query.send(i1905lif.i1905sock, model.address, i1905dev.al_address);
 
 		return req.defer();
 	},
@@ -209,6 +249,34 @@ const IProtoCapabilities = {
 				i1905dev.updateTLVs(msg.get_tlvs_raw(defs.TLV_BACKHAUL_STA_RADIO_CAPABILITIES));
 			}
 
+			return true;
+		}
+		else if (msg.type === defs.MSG_CLIENT_CAPABILITY_QUERY) {
+			const client_info = msg.get_tlv(defs.TLV_CLIENT_INFO);
+			if (!client_info)
+				return false;
+
+			const reply = cmdu.create(defs.MSG_CLIENT_CAPABILITY_REPORT, msg.mid);
+			const station = ubusclient.call('umap-rrmd', 'client_capability', { bssid: client_info.bssid, macaddr: client_info.mac_address });
+
+			reply.add_tlv(defs.TLV_CLIENT_INFO, client_info);
+
+			if (station?.assoc_frame) {
+				reply.add_tlv(defs.TLV_CLIENT_CAPABILITY_REPORT, {
+					frame_body: station?.assoc_frame,
+					result_code: 0x00,
+				});
+			} else {
+				reply.add_tlv(defs.TLV_CLIENT_CAPABILITY_REPORT, {
+					result_code: 0x01,
+				});
+				reply.add_tlv(defs.TLV_ERROR_CODE, {
+					reason_code: station ? 0x03 :0x02,
+					mac_address: client_info.mac_address,
+				});
+			}
+
+			reply.send(i1905lif.i1905sock, model.address, srcmac);
 			return true;
 		}
 
