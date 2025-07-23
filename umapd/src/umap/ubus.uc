@@ -52,7 +52,7 @@ const IUmapUbusProcedures = {
 			let mac = lc(req.args.macaddress ?? '00:00:00:00:00:00');
 
 			if (!match(mac, /^[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]$/i))
-				return req.reply(null, 2 /* UBUS_STATUS_INVALID_ARGUMENT */);
+				return req.reply(null, defs.UBUS.STATUS_INVALID_ARGUMENT);
 
 			let metrics = [];
 

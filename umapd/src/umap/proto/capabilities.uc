@@ -40,13 +40,13 @@ const IProtoCapabilities = {
 		const i1905dev = model.lookupDevice(req.args.macaddress);
 
 		if (!i1905dev)
-			return req.reply(null, 4 /* UBUS_STATUS_NOT_FOUND */);;
+			return req.reply(null, defs.UBUS.STATUS_NOT_FOUND);;
 
 		const query = cmdu.create(defs.MSG_AP_CAPABILITY_QUERY);
 
 		query.on_reply(response => {
 			if (!response)
-				return req.reply(null, 7 /* UBUS_STATUS_TIMEOUT */);
+				return req.reply(null, defs.UBUS.STATUS_TIMEOUT);
 
 			const ret = {
 				ap_capability: response.get_tlv(defs.TLV_AP_CAPABILITY),
@@ -89,13 +89,13 @@ const IProtoCapabilities = {
 		const i1905dev = model.lookupDevice(req.args.macaddress);
 
 		if (!i1905dev)
-			return req.reply(null, 4 /* UBUS_STATUS_NOT_FOUND */);
+			return req.reply(null, defs.UBUS.STATUS_NOT_FOUND);
 
 		const query = cmdu.create(defs.MSG_BACKHAUL_STA_CAPABILITY_QUERY);
 
 		query.on_reply(response => {
 			if (!response)
-				return req.reply(null, 7 /* UBUS_STATUS_TIMEOUT */);
+				return req.reply(null, defs.UBUS.STATUS_TIMEOUT);
 
 			const ret = {
 				radios: {}

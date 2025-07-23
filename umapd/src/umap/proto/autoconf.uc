@@ -319,7 +319,7 @@ const IProtoAutoConf = {
 
 	renew_ap_autoconfig: function (req) {
 		if (!model.isController)
-			return req.reply(null, 8 /* UBUS_STATUS_NOT_SUPPORTED */);
+			return req.reply(null, defs.UBUS.STATUS_NOT_SUPPORTED);
 
 		configuration.reload();
 

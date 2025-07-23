@@ -409,11 +409,11 @@ const IProtoScanning = {
 			i1905dev = model.lookupDevice(req.args.macaddress);
 
 			if (!i1905dev)
-				return req.reply(null, 4 /* UBUS_STATUS_NOT_FOUND */); /* device not found */
+				return req.reply(null, defs.UBUS.STATUS_NOT_FOUND);
 
 			for (let ruid in req.args.radios)
 				if ((ap_capas[ruid] = dev.getBasicAPCapability(ruid)) == null)
-					return req.reply(null, 4 /* UBUS_STATUS_NOT_FOUND */); /* radio on device not found */
+					return req.reply(null, defs.UBUS.STATUS_NOT_FOUND);
 		}
 
 		/* device address omitted, lookup by radios */
@@ -422,18 +422,18 @@ const IProtoScanning = {
 				let rv = lookupDeviceByRadio(ruid);
 
 				if (!rv)
-					return req.reply(null, 4 /* UBUS_STATUS_NOT_FOUND */); /* no device with specified ruid found */
+					return req.reply(null, defs.UBUS.STATUS_NOT_FOUND);
 
 				i1905dev ??= rv[0];
 
 				if (rv[0] !== i1905dev)
-					return req.reply(null, 2 /* UBUS_STATUS_INVALID_ARGUMENT */); /* radios refer to different devices */
+					return req.reply(null, defs.UBUS.STATUS_INVALID_ARGUMENT);
 
 				ap_capas[ruid] = rv[1];
 			}
 
 			if (!i1905dev)
-				return req.reply(null, 2 /* UBUS_STATUS_INVALID_ARGUMENT */); /* neither address nor radio given */
+				return req.reply(null, defs.UBUS.STATUS_INVALID_ARGUMENT);
 		}
 
 		/* no radios specified, determine all */
@@ -442,7 +442,7 @@ const IProtoScanning = {
 				ap_capas[ap_capa.radio_unique_identifier] = ap_capa;
 
 			if (!length(ap_capas))
-				return req.reply(null, 5 /* UBUS_STATUS_NO_DATA */); /* device has no radios */
+				return req.reply(null, defs.UBUS.STATUS_NO_DATA);
 		}
 
 		const scan_params = {
@@ -478,7 +478,7 @@ const IProtoScanning = {
 		msg.add_tlv(defs.TLV_CHANNEL_SCAN_REQUEST, scan_params);
 		msg.on_reply(response => {
 			if (!response)
-				return req.reply(null, 7 /* UBUS_STATUS_TIMEOUT */);
+				return req.reply(null, defs.UBUS.STATUS_TIMEOUT);
 
 			return req.reply(scan_params);
 		}, 60100, defs.MSG_IEEE1905_ACK);
