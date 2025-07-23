@@ -621,7 +621,7 @@ const IWireless = {
 	observeAssociationEvents: function () {
 		const self = this;
 
-		this.hostapdSubscriber = ubus.subscriber(msg => {
+		this.rrmdSubscriber = ubus.subscriber(msg => {
 			if (msg.type == 'assoc' || msg.type == 'disassoc') {
 				const radio = self.lookupRadioByIfname(msg.data.ifname);
 
@@ -631,10 +631,11 @@ const IWireless = {
 						ap_address: readfile(`/sys/class/net/${msg.data.ifname}/address`, 17),
 						sta_address: msg.data.address,
 						associated: (msg.type == 'assoc'),
+						stats: msg.data.stats,
 					});
 				}
 			}
-		}, null, ['hostapd.*']);
+		}, null, ['umap-rrmd']);
 	},
 
 	addRadio: function (name) {
