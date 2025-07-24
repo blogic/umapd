@@ -636,6 +636,12 @@ const IWireless = {
 				}
 			}
 		}, null, ['umap-rrmd']);
+
+		this.hostapdSubscriber = ubus.subscriber(msg => {
+			if (msg.type == 'beacon-report') {
+				events.dispatch('wireless.beacon-report', msg.data);
+			}
+		}, null, ['hostapd.*']);
 	},
 
 	addRadio: function (name) {
