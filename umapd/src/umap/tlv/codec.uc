@@ -1518,14 +1518,10 @@ encoder[0x96] = (buf, tlv) => {
 		if (bssid == null)
 			return null;
 
-		const estimated_downlink_mac_data_rate = hexdec(match(item.estimated_downlink_mac_data_rate, /^[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2}$/i)?.[0], ":");
-
-		if (estimated_downlink_mac_data_rate == null)
+		if (type(item.estimated_downlink_mac_data_rate) != "int")
 			return null;
 
-		const estimated_uplink_mac_data_rate = hexdec(match(item.estimated_uplink_mac_data_rate, /^[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2}$/i)?.[0], ":");
-
-		if (estimated_uplink_mac_data_rate == null)
+		if (type(item.estimated_uplink_mac_data_rate) != "int")
 			return null;
 
 		if (type(item.uplink_rcpi) != "int" || item.uplink_rcpi < 0 || item.uplink_rcpi > 220)
@@ -1533,8 +1529,8 @@ encoder[0x96] = (buf, tlv) => {
 
 		buf.put('6s', bssid);
 		buf.put('!L', item.time_delta);
-		buf.put('6s', estimated_downlink_mac_data_rate);
-		buf.put('6s', estimated_uplink_mac_data_rate);
+		buf.put('!L', item.estimated_downlink_mac_data_rate);
+		buf.put('!L', item.estimated_uplink_mac_data_rate);
 		buf.put('B', item.uplink_rcpi);
 	}
 
@@ -5116,8 +5112,8 @@ decoder[0x96] = (buf, end) => {
 
 		const bssid = sprintf('%02x:%02x:%02x:%02x:%02x:%02x', ...buf.read('6B'));
 		const time_delta = buf.get('!L');
-		const estimated_downlink_mac_data_rate = sprintf('%02x:%02x:%02x:%02x:%02x:%02x', ...buf.read('6B'));
-		const estimated_uplink_mac_data_rate = sprintf('%02x:%02x:%02x:%02x:%02x:%02x', ...buf.read('6B'));
+		const estimated_downlink_mac_data_rate = buf.get('!L');
+		const estimated_uplink_mac_data_rate = buf.get('!L');
 		const uplink_rcpi = buf.get('B');
 
 		if (uplink_rcpi > 0xdc)
