@@ -1616,18 +1616,15 @@ encoder[0x99] = (buf, tlv) => {
 	if (mac_address == null)
 		return null;
 
-	const bssid = hexdec(match(tlv.bssid, /^[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2}$/i)?.[0], ":");
+	const bssid = hexdec(match(tlv.bssid || "ff:ff:ff:ff:ff:ff", /^[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2}$/i)?.[0], ":");
 
-	if (bssid == null)
+	if (exists(tlv, "ssid") && (type(tlv.ssid) != "string" || length(tlv.ssid) > 0xff))
 		return null;
 
-	if (type(tlv.ssid) != "string" || length(tlv.ssid) > 0xff)
+	if (exists(tlv, "ap_channel_reports") && (type(tlv.ap_channel_reports) != "array" || length(tlv.ap_channel_reports) > 0xff))
 		return null;
 
-	if (type(tlv.ap_channel_reports) != "array" || length(tlv.ap_channel_reports) > 0xff)
-		return null;
-
-	if (type(tlv.element_list) != "array")
+	if (exists(tlv, "element_list") && type(tlv.element_list) != "array")
 		return null;
 
 	buf.put('6s', mac_address);
@@ -1636,7 +1633,8 @@ encoder[0x99] = (buf, tlv) => {
 	buf.put('6s', bssid);
 	buf.put('B', tlv.reporting_detail_value);
 	buf.put('B', length(tlv.ssid));
-	buf.put('*', tlv.ssid);
+	if (length(tlv.ssid))
+		buf.put('*', tlv.ssid);
 	buf.put('B', length(tlv.ap_channel_reports));
 
 	for (let item in tlv.ap_channel_reports) {
