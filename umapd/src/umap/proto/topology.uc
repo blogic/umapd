@@ -194,9 +194,6 @@ const IProtoTopology = {
 			return true;
 		}
 		else if (msg.type == defs.MSG_TOPOLOGY_NOTIFICATION) {
-			if (!model.isController)
-				return true;
-
 			if (!al_mac) {
 				log.warn(`topology: ignoring notification without AL MAC`);
 				return true;
