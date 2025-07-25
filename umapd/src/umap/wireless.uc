@@ -214,6 +214,7 @@ function getSupportedOperatingClasses(phy, radio_band) {
 
 		let maxTxPower = 2000;
 		let disabledChannels = [];
+		let availableChannels = [];
 		let matchingFrequencies = 0;
 
 		for (let available_band in phy.wiphy_bands) {
@@ -233,8 +234,10 @@ function getSupportedOperatingClasses(phy, radio_band) {
 				if (band != opClass.band)
 					continue;
 
-				if (!(channel in opClass.channels))
+				if (!(channel in opClass.channels)) {
+					push(availableChannels, channel);
 					continue;
+				}
 
 				if (available_freq.disabled || available_freq.no_ir) {
 					push(disabledChannels, channel);
@@ -257,7 +260,8 @@ function getSupportedOperatingClasses(phy, radio_band) {
 				// negative values here, simply cap to the range 0..127
 				max_txpower_eirp: min(maxTxPower / 100, 127),
 
-				statically_non_operable_channels: disabledChannels
+				statically_non_operable_channels: disabledChannels,
+				available_channels: availableChannels,
 			});
 	}
 
@@ -611,7 +615,34 @@ const IRadio = {
 				if (iface.config?.mode == 'sta' && iface.config?.multi_ap == '1')
 					return readfile(`/sys/class/net/${iface.ifname}/address`, 17);
 		}
-	}
+	},
+
+	getChannels: function() {
+		let phy = wlrequest(wlconst.NL80211_CMD_GET_WIPHY, 0, {
+			wiphy: this.index,
+			split_wiphy_dump: true
+		});
+
+		if (!phy)
+			return {};
+
+		let channels = {};
+
+		for (let wiphy_band in phy.wiphy_bands) {
+			for (let freq in wiphy_band?.freqs) {
+				let channel = frequencyToChannel(freq.freq);
+				channels[channel] = { };
+				if (freq.disabled)
+					channels[channel].disabled = true;
+				if (freq.radar) {
+					channels[channel].dfs_state = freq.dfs_state;
+					channels[channel].dfs_time = freq.dfs_time;
+				}
+			}
+		}
+
+		return channels;
+	},
 };
 
 const IWireless = {
