@@ -1150,25 +1150,25 @@ encoder[0x8a] = (buf, tlv) => {
 	if (type(tlv.ap_metrics_reporting_interval) != "int" || tlv.ap_metrics_reporting_interval < 0 || tlv.ap_metrics_reporting_interval > 255)
 		return null;
 
-	const radio_unique_identifier = hexdec(match(tlv.radio_unique_identifier, /^[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2}$/i)?.[0], ":");
-
-	if (radio_unique_identifier == null)
-		return null;
-
 	if (type(tlv.radios) != "array" || length(tlv.radios) > 0xff)
 		return null;
 
 	buf.put('B', tlv.ap_metrics_reporting_interval);
 	buf.put('B', length(tlv.radios));
-	buf.put('6s', radio_unique_identifier);
 
 	for (let item in tlv.radios) {
 		if (type(item) != "object")
 			return null;
 
+		const radio_unique_identifier = hexdec(match(item.radio_unique_identifier, /^[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2}:[0-9a-f]{2}$/i)?.[0], ":");
+
+		if (radio_unique_identifier == null)
+			return null;
+
 		if (type(item.sta_metrics_reporting_rcpi_threshold) != "int" || item.sta_metrics_reporting_rcpi_threshold < 0 || item.sta_metrics_reporting_rcpi_threshold > 220)
 			return null;
 
+		buf.put('6s', radio_unique_identifier);
 		buf.put('B', item.sta_metrics_reporting_rcpi_threshold);
 		buf.put('B', item.sta_metrics_reporting_rcpi_hysteresis_margin_override);
 		buf.put('B', item.ap_metrics_channel_utilization_reporting_threshold);
@@ -4761,13 +4761,13 @@ decoder[0x8a] = (buf, end) => {
 		return null;
 
 	const radios_count = buf.get('B');
-	const radio_unique_identifier = sprintf('%02x:%02x:%02x:%02x:%02x:%02x', ...buf.read('6B'));
-	const radios = [];
+	const radios = {};
 
 	for (let h = 0; h < radios_count; h++) {
-		if (buf.pos() + 4 > end)
+		if (buf.pos() + 10 > end)
 			return null;
 
+		const radio_unique_identifier = sprintf('%02x:%02x:%02x:%02x:%02x:%02x', ...buf.read('6B'));
 		const sta_metrics_reporting_rcpi_threshold = buf.get('B');
 
 		if (sta_metrics_reporting_rcpi_threshold > 0xdc)
@@ -4781,19 +4781,18 @@ decoder[0x8a] = (buf, end) => {
 		const associated_sta_link_metrics_inclusion_policy = ((bitfield & 0b01000000) == 0b01000000);
 		const associated_wifi6_sta_status_inclusion_policy = ((bitfield & 0b00100000) == 0b00100000);
 
-		push(radios, {
+		radios[radio_unique_identifier] = {
 			sta_metrics_reporting_rcpi_threshold,
 			sta_metrics_reporting_rcpi_hysteresis_margin_override,
 			ap_metrics_channel_utilization_reporting_threshold,
 			associated_sta_traffic_stats_inclusion_policy,
 			associated_sta_link_metrics_inclusion_policy,
 			associated_wifi6_sta_status_inclusion_policy,
-		});
+		};
 	}
 
 	return {
 		ap_metrics_reporting_interval,
-		radio_unique_identifier,
 		radios,
 	};
 };
