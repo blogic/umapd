@@ -640,6 +640,12 @@ const IWireless = {
 		this.hostapdSubscriber = ubus.subscriber(msg => {
 			if (msg.type == 'beacon-report') {
 				events.dispatch('wireless.beacon-report', msg.data);
+			} else if (msg.type == 'key-mismatch') {
+				events.dispatch('wireless.association-error', {
+					ap_address: readfile(`/sys/class/net/${msg.data.ifname}/address`, 17),
+					sta_address: msg.data.address,
+					reason: msg.type,
+				});
 			}
 		}, null, ['hostapd.*']);
 	},
