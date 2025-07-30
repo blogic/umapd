@@ -3027,12 +3027,8 @@ encoder[0xc8] = (buf, tlv) => {
 
 // 0xc9 - Status Code
 // Wi-Fi EasyMesh
-encoder[0xc9] = (buf, tlv) => {
-	if (type(tlv) != "object")
-		return null;
-
-	buf.put('!H', tlv.octets_count);
-	buf.put('!H', tlv.status_code);
+encoder[0xc9] = (buf, status_code) => {
+	buf.put('!H', status_code);
 
 	return buf;
 };
@@ -6743,16 +6739,12 @@ decoder[0xc8] = (buf, end) => {
 // 0xc9 - Status Code
 // Wi-Fi EasyMesh
 decoder[0xc9] = (buf, end) => {
-	if (buf.pos() + 4 > end)
+	if (buf.pos() + 2 > end)
 		return null;
 
-	const octets_count = buf.get('!H');
 	const status_code = buf.get('!H');
 
-	return {
-		octets_count,
-		status_code,
-	};
+	return status_code;
 };
 
 // 0xca - Reason Code
