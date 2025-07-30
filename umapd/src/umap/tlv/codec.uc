@@ -1684,6 +1684,7 @@ encoder[0x9a] = (buf, tlv) => {
 		return null;
 
 	buf.put('6s', mac_address);
+	buf.put('B', 0); // reserved
 	buf.put('B', length(tlv.measurement_report_elements));
 
 	for (let item in tlv.measurement_report_elements) {
@@ -1694,7 +1695,7 @@ encoder[0x9a] = (buf, tlv) => {
 			return null;
 
 		buf.put('B', item.id);
-		buf.put('B', length(item.report_data));
+		buf.put('B', length(item.report_data) + 3); // account for item.token, item.report_mode and item.type
 		buf.put('B', item.token);
 		buf.put('B', item.report_mode);
 		buf.put('B', item.type);
@@ -5275,6 +5276,7 @@ decoder[0x9a] = (buf, end) => {
 
 	const mac_address = sprintf('%02x:%02x:%02x:%02x:%02x:%02x', ...buf.read('6B'));
 	const measurement_report_elements_count = buf.get('B');
+	const measurement_report_elements_reserved = buf.get('B');
 	const measurement_report_elements = [];
 
 	for (let h = 0; h < measurement_report_elements_count; h++) {
