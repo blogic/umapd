@@ -79,7 +79,7 @@ function emit_topology_notification(assoc_event) {
 function update_node_information() {
 	const i1905lifs = model.getLocalInterfaces();
 
-	for (let i1905dev in model.getDevices()) {
+	for (let i1905dev in model.getRemoteDevices()) {
 		let query;
 
 		// query device information

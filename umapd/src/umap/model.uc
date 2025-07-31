@@ -1407,6 +1407,10 @@ model = proto({
 		return this.devices[0];
 	},
 
+	getRemoteDevices: function () {
+		return slice(this.devices, 1);
+	},
+
 	getDevices: function () {
 		return [...this.devices];
 	},

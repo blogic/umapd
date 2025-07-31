@@ -323,12 +323,7 @@ const IProtoAutoConf = {
 
 		configuration.reload();
 
-		const i1905self = model.getLocalDevice();
-
-		for (let i1905dev in model.getDevices()) {
-			if (i1905dev === i1905self)
-				continue;
-
+		for (let i1905dev in model.getRemoteDevices()) {
 			const renew = cmdu.create(defs.MSG_AP_AUTOCONFIGURATION_RENEW);
 
 			renew.add_tlv(defs.TLV_IEEE1905_AL_MAC_ADDRESS, model.address);
