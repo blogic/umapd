@@ -2,8 +2,13 @@
 
 import * as libubus from 'ubus';
 
-if (getenv('ACTION') != 'pressed')
+let ACTION = getenv('ACTION');
+let SEEN = +getenv('SEEN');
+
+if (ACTION != 'released')
 	exit(0);
+if (SEEN < 3)
+	exit(1);
 
 let ubus = libubus.connect();
 let radios = {};

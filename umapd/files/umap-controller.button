@@ -3,9 +3,12 @@
 import * as libubus from 'ubus';
 
 let ACTION = getenv('ACTION');
+let SEEN = +getenv('SEEN');
 
-if (ACTION != 'pressed')
+if (ACTION != 'released')
 	exit(0);
+if (SEEN >= 3)
+	exit(1);
 
 let ubus = libubus.connect();
 
