@@ -29,7 +29,7 @@ const REPLY_HANDLER_TIMEOUT = 3000;
 const IProtoCapabilities = {
 	init: function () {
 		ubus.register('query_ap_capability',
-			{ macaddress: "00:00:00:00:00:00" },
+			{ ap_mac: "00:00:00:00:00:00" },
 			this.query_ap_capability);
 
 		ubus.register('query_backhaul_sta_capability',
@@ -37,12 +37,12 @@ const IProtoCapabilities = {
 			this.query_backhaul_sta_capability);
 
 		ubus.register('query_client_capability',
-			{ bssid: "00:00:00:00:00:00", macaddress: "00:00:00:00:00:00" },
+			{ ap_mac: "00:00:00:00:00:00", sta_mac: "00:00:00:00:00:00" },
 			this.query_client_capability);
 	},
 
 	query_ap_capability: function (req) {
-		const i1905dev = model.lookupDevice(req.args.macaddress);
+		const i1905dev = model.lookupDevice(req.args.ap_mac);
 
 		if (!i1905dev)
 			return req.reply(null, 4 /* UBUS_STATUS_NOT_FOUND */);;
@@ -124,13 +124,13 @@ const IProtoCapabilities = {
 	},
 
 	query_client_capability: function (req) {
-		const i1905dev = model.lookupDevice(req.args.bssid);
+		const i1905dev = model.lookupDevice(req.args.ap_mac);
 
-		if (!i1905dev || !req.args.macaddress)
+		if (!i1905dev || !req.args.sta_mac)
 			return req.reply(null, defs.UBUS_STATUS_NOT_FOUND);
 
 		const query = cmdu.create(defs.MSG_CLIENT_CAPABILITY_QUERY);
-		query.add_tlv(defs.TLV_CLIENT_INFO, { bssid: req.args.bssid, mac_address: req.args.macaddress });
+		query.add_tlv(defs.TLV_CLIENT_INFO, { bssid: req.args.ap_mac, mac_address: req.args.sta_mac });
 
 		query.on_reply(response => {
 			if (!response)
