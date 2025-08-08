@@ -1392,6 +1392,17 @@ model = proto({
 		}
 	},
 
+	getLocalStats: function (name) {
+		let ifc = this.lookupLocalInterface(name);
+		if (!ifc)
+			return;
+
+		let ifname = ifc.ifname;
+		for (let brname, br in this.bridges)
+			if (br.ports[ifname])
+				return br.sockbr.stats(ifname);
+	},
+
 	getLocalInterfaces: function () {
 		return filter(values(this.interfaces), ifc => !ifc.pending);
 	},
